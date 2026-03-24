@@ -1,0 +1,20 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; color: #1a202c; }
+button { cursor: pointer; }
+input, select, textarea { outline: none; }
+
+/* Responsive header */
+@media (max-width: 640px) {
+  .desktop-nav, .desktop-user, .desktop-logout { display: none !important; }
+}
+@media (min-width: 641px) {
+  .hamburger-btn { display: none !important; }
+  .mobile-menu { display: none !important; }
+}
+
+/* Responsive schedule grid */
+@media (max-width: 480px) {
+  .schedule-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
