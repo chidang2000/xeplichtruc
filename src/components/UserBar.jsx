@@ -13,7 +13,7 @@ export default function UserBar({ user, year, month, days, schedule, dayShifts, 
 
   function getActiveShifts(date) {
     const key = dateKey(date)
-    if (!dayShifts[key]) return shifts
+    if (dayShifts[key] === undefined || dayShifts[key] === null) return shifts
     return shifts.filter(s => dayShifts[key].includes(s.id))
   }
 

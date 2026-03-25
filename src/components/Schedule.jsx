@@ -38,12 +38,15 @@ export default function Schedule({ user }) {
 
   useEffect(() => {
     let active = true
+    setLoading(true)
     Promise.all([
       api.getSchedule(year, month + 1),
       api.getDayShifts(year, month + 1),
     ]).then(([sched, ds]) => {
       if (!active) return
       setSchedule(sched); setDayShifts(ds); setLoading(false)
+    }).catch(() => {
+      if (active) setLoading(false)
     })
     return () => { active = false }
   }, [year, month])
@@ -58,7 +61,9 @@ export default function Schedule({ user }) {
 
   function getActiveShifts(date) {
     const key = dateKey(date)
-    if (!dayShifts[key]) return shifts
+    // Nếu chưa có config cho ngày này → hiện tất cả
+    if (dayShifts[key] === undefined || dayShifts[key] === null) return shifts
+    // Nếu có config → chỉ hiện ca trong danh sách (kể cả rỗng)
     return shifts.filter(s => dayShifts[key].includes(s.id))
   }
   function getAssigned(date, shiftId) { return schedule[dateKey(date)]?.[shiftId] || [] }

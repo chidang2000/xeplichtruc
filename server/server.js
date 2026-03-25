@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
 import shiftRoutes from './routes/shifts.js'
 import scheduleRoutes from './routes/schedule.js'
+import dayShiftRoutes from './routes/dayshifts.js'
 import messageRoutes from './routes/messages.js'
 
 dotenv.config()
@@ -17,6 +18,7 @@ app.use(express.json())
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/shifts', shiftRoutes)
+app.use('/api/schedule/dayshifts', dayShiftRoutes)
 app.use('/api/schedule', scheduleRoutes)
 app.use('/api/messages', messageRoutes)
 

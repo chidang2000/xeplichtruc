@@ -1,5 +1,5 @@
-// const BASE = 'http://localhost:8000/api'
-const BASE = 'https://xeplichtruc.onrender.com/api'
+const BASE = 'http://localhost:8000/api'
+// const BASE = 'https://xeplichtruc.onrender.com/api'
 
 async function req(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
@@ -38,7 +38,9 @@ export const api = {
   // Messages
   getMessages: (userId) => req('GET', `/messages/${userId}`),
   sendMessage: (data) => req('POST', '/messages', data),
-  getThreads: () => req('GET', '/messages/threads/list'),
+  markRead: (userId, readerId) => req('PUT', `/messages/read/${userId}`, { readerId }),
+  getUnreadAdmin: () => req('GET', '/messages/unread/admin'),
+  getUnreadUser: (userId) => req('GET', `/messages/unread/${userId}`),
 }
 
 // Session helpers (vẫn dùng localStorage cho current user)

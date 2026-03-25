@@ -57,7 +57,7 @@ export default function ShiftManager() {
 
   function getActiveShifts(date) {
     const key = dateKey(date)
-    if (!dayShifts[key]) return shifts.map(s => s.id)
+    if (dayShifts[key] === undefined || dayShifts[key] === null) return shifts.map(s => s.id)
     return dayShifts[key]
   }
 

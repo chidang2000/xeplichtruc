@@ -7,18 +7,11 @@ function useUnread(user) {
     async function calc() {
       try {
         if (user.role === 'admin') {
-          const users = await api.getUsers()
-          let total = 0
-          for (const u of users.filter(x => x.role === 'user')) {
-            const msgs = await api.getMessages(u.id)
-            const lastSeen = sessionStorage.getItem(`lastSeen_admin_${u.id}`) || ''
-            total += msgs.filter(m => m.fromId === u.id && m.id > lastSeen).length
-          }
-          setCount(total)
+          const counts = await api.getUnreadAdmin()
+          setCount(Object.values(counts).reduce((a, b) => a + b, 0))
         } else {
-          const msgs = await api.getMessages(String(user.id))
-          const lastSeen = sessionStorage.getItem(`lastSeen_user_${user.id}`) || ''
-          setCount(msgs.filter(m => m.fromId === 'admin' && m.id > lastSeen).length)
+          const { count } = await api.getUnreadUser(String(user.id))
+          setCount(count)
         }
       } catch {}
     }

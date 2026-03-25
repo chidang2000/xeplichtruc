@@ -1,10 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 
-// Lưu id tin nhắn cuối đã xem theo key
-function getLastSeen(key) { return sessionStorage.getItem(`lastSeen_${key}`) || '' }
-function setLastSeen(key, id) { sessionStorage.setItem(`lastSeen_${key}`, id) }
-
 function ChatBox({ thread, text, setText, onSend, isAdmin, users }) {
   const bottomRef = useRef(null)
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [thread.length])
@@ -46,7 +42,7 @@ export default function Messages({ user }) {
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [selectedUserId, setSelectedUserId] = useState(null)
-  const [unread, setUnread] = useState({}) // { userId: count }
+  const [unread, setUnread] = useState({}) // admin: {userId: count}, user: number
 
   useEffect(() => {
     if (isAdmin) api.getUsers().then(u => setUsers(u.filter(x => x.role === 'user')))
@@ -62,12 +58,14 @@ export default function Messages({ user }) {
       const msgs = await api.getMessages(uid)
       if (!active) return
       setMessages(msgs)
-      // Đánh dấu đã đọc thread này
-      if (msgs.length > 0) {
-        const lastId = msgs[msgs.length - 1].id
-        const key = isAdmin ? `admin_${uid}` : `user_${uid}`
-        setLastSeen(key, lastId)
-        if (isAdmin) setUnread(prev => ({ ...prev, [uid]: 0 }))
+      // Đánh dấu đã đọc trên server
+      const readerId = isAdmin ? 'admin' : String(user.id)
+      await api.markRead(uid, readerId)
+      // Cập nhật unread count
+      if (isAdmin) {
+        setUnread(prev => ({ ...prev, [uid]: 0 }))
+      } else {
+        setUnread(0)
       }
     }
 
@@ -76,30 +74,42 @@ export default function Messages({ user }) {
     return () => { active = false; clearInterval(t) }
   }, [selectedUserId])
 
-  // Admin: polling unread cho tất cả user (chỉ khi đã có danh sách user)
+  // Admin: polling unread tất cả user — chỉ update những user không đang xem
   useEffect(() => {
-    if (!isAdmin || users.length === 0) return
+    if (!isAdmin) return
     let active = true
-
-    async function checkAll() {
-      const counts = {}
-      for (const u of users) {
-        // Chỉ check nếu không đang xem thread này
-        if (selectedUserId === u.id) { counts[u.id] = 0; continue }
-        try {
-          const msgs = await api.getMessages(u.id)
-          const lastSeen = getLastSeen(`admin_${u.id}`)
-          // Đếm tin từ user gửi admin mà chưa đọc
-          counts[u.id] = msgs.filter(m => m.fromId === u.id && m.id > lastSeen).length
-        } catch { counts[u.id] = 0 }
-      }
-      if (active) setUnread(counts)
+    async function checkUnread() {
+      try {
+        const counts = await api.getUnreadAdmin()
+        if (active) {
+          setUnread(prev => {
+            const next = { ...counts }
+            // Giữ nguyên 0 cho user đang xem
+            if (selectedUserId) next[selectedUserId] = 0
+            return next
+          })
+        }
+      } catch {}
     }
-
-    checkAll()
-    const t = setInterval(checkAll, 3000)
+    checkUnread()
+    const t = setInterval(checkUnread, 3000)
     return () => { active = false; clearInterval(t) }
-  }, [users, selectedUserId])
+  }, [isAdmin, selectedUserId])
+
+  // User: polling unread
+  useEffect(() => {
+    if (isAdmin) return
+    let active = true
+    async function checkUnread() {
+      try {
+        const { count } = await api.getUnreadUser(String(user.id))
+        if (active) setUnread(count)
+      } catch {}
+    }
+    checkUnread()
+    const t = setInterval(checkUnread, 3000)
+    return () => { active = false; clearInterval(t) }
+  }, [isAdmin])
 
   async function send() {
     if (!text.trim()) return
@@ -114,13 +124,7 @@ export default function Messages({ user }) {
     setText('')
   }
 
-  function selectUser(uid) {
-    setSelectedUserId(uid)
-    setText('')
-    setMessages([])
-    // Reset badge ngay khi click
-    setUnread(prev => ({ ...prev, [uid]: 0 }))
-  }
+  function selectUser(uid) { setSelectedUserId(uid); setText(''); setMessages([]) }
 
   return (
     <div style={s.wrap} className="messages-wrap">
@@ -142,10 +146,7 @@ export default function Messages({ user }) {
                   <div style={s.userMeta}>
                     <div style={s.userName}>{u.name}</div>
                     <div style={s.userSub}>
-                      {cnt > 0
-                        ? <span style={s.unreadLabel}>{cnt} tin chưa đọc</span>
-                        : <span>{u.username}</span>
-                      }
+                      {cnt > 0 ? <span style={s.unreadLabel}>{cnt} tin chưa đọc</span> : u.username}
                     </div>
                   </div>
                 </div>
@@ -177,7 +178,7 @@ const s = {
   layout: { display: 'flex', flex: 1, background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', minHeight: 0 },
   sidebar: { width: 250, borderRight: '1px solid #e2e8f0', overflowY: 'auto', flexShrink: 0 },
   sidebarTitle: { padding: '16px 16px 12px', fontWeight: 700, fontSize: 15, color: '#2d3748', borderBottom: '1px solid #e2e8f0' },
-  userItem: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f4f8', transition: 'background 0.15s' },
+  userItem: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f4f8' },
   userItemActive: { background: '#ebf4ff' },
   avatarWrap: { position: 'relative', flexShrink: 0 },
   avatar: { width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 },
