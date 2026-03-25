@@ -20,11 +20,13 @@ app.use('/api/shifts', shiftRoutes)
 app.use('/api/schedule', scheduleRoutes)
 app.use('/api/messages', messageRoutes)
 
+const PORT = process.env.PORT;
+
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('✅ MongoDB connected')
-    app.listen(process.env.PORT || 5000, () => {
-      console.log(`🚀 Server running on port ${process.env.PORT || 5000}`)
+    app.listen(PORT || 5000, () => {
+      console.log(`🚀 Server running on port ${PORT || 5000}`)
     })
   })
   .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1) })
