@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getCurrentUser } from './store'
+import { getCurrentUser } from './api'
 import Login from './components/Login'
 import Header from './components/Header'
 import Schedule from './components/Schedule'

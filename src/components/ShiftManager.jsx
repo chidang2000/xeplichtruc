@@ -1,77 +1,72 @@
-import { useState } from 'react'
-import { getShifts, saveShifts, getDayShifts, saveDayShifts } from '../store'
+import { useState, useEffect } from 'react'
+import { api } from '../api'
 
 const COLORS = ['#48bb78','#fbbf24','#60a5fa','#818cf8','#f87171','#fb923c','#34d399','#e879f9']
-
 const today = new Date()
+const MONTHS = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12']
+const DAY_SHORT = ['CN','T2','T3','T4','T5','T6','T7']
+
 function dateKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 function getDays(year, month) {
-  const days = []
-  const d = new Date(year, month, 1)
-  while (d.getMonth() === month) { days.push(new Date(d)); d.setDate(d.getDate() + 1) }
+  const days = []; const d = new Date(year, month, 1)
+  while (d.getMonth() === month) { days.push(new Date(d)); d.setDate(d.getDate()+1) }
   return days
 }
-const MONTHS = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12']
-const DAY_SHORT = ['CN','T2','T3','T4','T5','T6','T7']
 
 export default function ShiftManager() {
-  const [shifts, setShifts] = useState(getShifts())
-  const [dayShifts, setDayShifts] = useState(getDayShifts())
+  const [shifts, setShifts] = useState([])
+  const [dayShifts, setDayShifts] = useState({})
   const [form, setForm] = useState({ label: '', time: '', color: COLORS[0] })
   const [editId, setEditId] = useState(null)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
-  const [activeTab, setActiveTab] = useState('global') // 'global' | 'daily'
+  const [activeTab, setActiveTab] = useState('global')
 
   const days = getDays(year, month)
 
-  // --- Quản lý ca toàn cục ---
-  function handleSave(e) {
+  useEffect(() => { api.getShifts().then(setShifts) }, [])
+  useEffect(() => { api.getDayShifts(year, month+1).then(setDayShifts) }, [year, month])
+
+  async function handleSave(e) {
     e.preventDefault()
     if (!form.label) { setError('Vui lòng nhập tên ca'); return }
-    let updated
-    if (editId) {
-      updated = shifts.map(s => s.id === editId ? { ...s, ...form } : s)
-    } else {
-      const id = 'ca-' + Date.now()
-      updated = [...shifts, { id, ...form }]
-    }
-    saveShifts(updated); setShifts(updated)
-    setForm({ label: '', time: '', color: COLORS[0] }); setEditId(null); setError(''); setShowForm(false)
+    try {
+      if (editId) {
+        const updated = await api.updateShift(editId, form)
+        setShifts(prev => prev.map(s => s.id === editId ? updated : s))
+      } else {
+        const newShift = await api.addShift(form)
+        setShifts(prev => [...prev, newShift])
+      }
+      setForm({ label: '', time: '', color: COLORS[0] }); setEditId(null); setError(''); setShowForm(false)
+    } catch (err) { setError(err.message) }
   }
 
-  function handleEdit(sh) {
-    setForm({ label: sh.label, time: sh.time, color: sh.color })
-    setEditId(sh.id); setShowForm(true)
+  function handleEdit(sh) { setForm({ label: sh.label, time: sh.time || '', color: sh.color }); setEditId(sh.id); setShowForm(true) }
+
+  async function handleDelete(id) {
+    await api.deleteShift(id)
+    setShifts(prev => prev.filter(s => s.id !== id))
   }
 
-  function handleDelete(id) {
-    const updated = shifts.filter(s => s.id !== id)
-    saveShifts(updated); setShifts(updated)
-  }
+  function cancelForm() { setForm({ label: '', time: '', color: COLORS[0] }); setEditId(null); setError(''); setShowForm(false) }
 
-  function cancelForm() {
-    setForm({ label: '', time: '', color: COLORS[0] }); setEditId(null); setError(''); setShowForm(false)
-  }
-
-  // --- Bật/tắt ca theo ngày ---
-  // Nếu ngày chưa có config → tất cả ca đều bật
   function getActiveShifts(date) {
     const key = dateKey(date)
-    if (!dayShifts[key]) return shifts.map(s => s.id) // mặc định tất cả bật
+    if (!dayShifts[key]) return shifts.map(s => s.id)
     return dayShifts[key]
   }
 
-  function toggleDayShift(date, shiftId) {
+  async function toggleDayShift(date, shiftId) {
     const key = dateKey(date)
     const cur = getActiveShifts(date)
     const updated = cur.includes(shiftId) ? cur.filter(id => id !== shiftId) : [...cur, shiftId]
-    const next = { ...dayShifts, [key]: updated }
-    setDayShifts(next); saveDayShifts(next)
+    await api.updateDayShifts(key, updated)
+    setDayShifts(prev => ({ ...prev, [key]: updated }))
   }
 
   function prevMonth() { month === 0 ? (setYear(y => y-1), setMonth(11)) : setMonth(m => m-1) }
@@ -80,18 +75,11 @@ export default function ShiftManager() {
   return (
     <div style={s.wrap}>
       <h2 style={s.pageTitle}>⚙️ Quản lý Ca Trực</h2>
-
-      {/* Tab switch */}
       <div style={s.tabs}>
-        <button style={{ ...s.tabBtn, ...(activeTab === 'global' ? s.tabActive : {}) }} onClick={() => setActiveTab('global')}>
-          📋 Danh sách ca
-        </button>
-        <button style={{ ...s.tabBtn, ...(activeTab === 'daily' ? s.tabActive : {}) }} onClick={() => setActiveTab('daily')}>
-          📅 Cấu hình theo ngày
-        </button>
+        <button style={{ ...s.tabBtn, ...(activeTab === 'global' ? s.tabActive : {}) }} onClick={() => setActiveTab('global')}>📋 Danh sách ca</button>
+        <button style={{ ...s.tabBtn, ...(activeTab === 'daily' ? s.tabActive : {}) }} onClick={() => setActiveTab('daily')}>📅 Cấu hình theo ngày</button>
       </div>
 
-      {/* ===== TAB: DANH SÁCH CA ===== */}
       {activeTab === 'global' && (
         <div>
           <div style={s.topBar}>
@@ -100,7 +88,6 @@ export default function ShiftManager() {
               {showForm && !editId ? '✕ Đóng' : '+ Thêm ca mới'}
             </button>
           </div>
-
           {showForm && (
             <form onSubmit={handleSave} style={s.form}>
               <h3 style={s.formTitle}>{editId ? '✏️ Chỉnh sửa ca' : '➕ Thêm ca mới'}</h3>
@@ -110,17 +97,14 @@ export default function ShiftManager() {
                   <input style={s.input} placeholder="VD: Ca Sáng" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
                 </div>
                 <div style={s.fieldGroup}>
-                  <label style={s.label}>Thời gian</label>
+                  <label style={s.label}>Thời gian (tuỳ chọn)</label>
                   <input style={s.input} placeholder="VD: 06:00 - 14:00" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
                 </div>
                 <div style={s.fieldGroup}>
                   <label style={s.label}>Màu sắc</label>
                   <div style={s.colorRow}>
                     {COLORS.map(c => (
-                      <button key={c} type="button"
-                        style={{ ...s.colorDot, background: c, ...(form.color === c ? s.colorDotActive : {}) }}
-                        onClick={() => setForm({ ...form, color: c })}
-                      />
+                      <button key={c} type="button" style={{ ...s.colorDot, background: c, ...(form.color === c ? s.colorDotActive : {}) }} onClick={() => setForm({ ...form, color: c })} />
                     ))}
                   </div>
                 </div>
@@ -132,14 +116,13 @@ export default function ShiftManager() {
               </div>
             </form>
           )}
-
           <div style={s.shiftList}>
             {shifts.map(sh => (
               <div key={sh.id} style={s.shiftCard}>
                 <div style={{ ...s.shiftColor, background: sh.color }} />
                 <div style={s.shiftInfo}>
                   <span style={s.shiftName}>{sh.label}</span>
-                  <span style={s.shiftTime}>🕐 {sh.time}</span>
+                  {sh.time && <span style={s.shiftTime}>🕐 {sh.time}</span>}
                 </div>
                 <div style={s.shiftActions}>
                   <button style={s.editBtn} onClick={() => handleEdit(sh)}>✏️ Sửa</button>
@@ -151,7 +134,6 @@ export default function ShiftManager() {
         </div>
       )}
 
-      {/* ===== TAB: CẤU HÌNH THEO NGÀY ===== */}
       {activeTab === 'daily' && (
         <div>
           <div style={s.monthNav}>
@@ -160,7 +142,6 @@ export default function ShiftManager() {
             <button style={s.navBtn} onClick={nextMonth}>›</button>
           </div>
           <p style={s.desc}>Bật/tắt từng ca cho từng ngày. Mặc định tất cả ca đều bật.</p>
-
           <div style={s.dayGrid}>
             {days.map(day => {
               const active = getActiveShifts(day)
@@ -175,12 +156,9 @@ export default function ShiftManager() {
                     {shifts.map(sh => {
                       const on = active.includes(sh.id)
                       return (
-                        <button
-                          key={sh.id}
-                          style={{ ...s.toggleBtn, background: on ? sh.color + '33' : '#f0f4f8', borderColor: on ? sh.color : '#e2e8f0', color: on ? sh.color : '#a0aec0' }}
-                          onClick={() => toggleDayShift(day, sh.id)}
-                          title={on ? `Tắt ${sh.label}` : `Bật ${sh.label}`}
-                        >
+                        <button key={sh.id}
+                          style={{ ...s.toggleBtn, background: on ? sh.color+'33' : '#f0f4f8', borderColor: on ? sh.color : '#e2e8f0', color: on ? sh.color : '#a0aec0' }}
+                          onClick={() => toggleDayShift(day, sh.id)}>
                           {on ? '✓' : '✕'} {sh.label}
                         </button>
                       )
@@ -237,5 +215,5 @@ const s = {
   dayNum: { width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', fontWeight: 700, fontSize: 14, color: '#2d3748' },
   todayNum: { background: '#667eea', color: '#fff' },
   shiftToggles: { display: 'flex', flexDirection: 'column', gap: 5 },
-  toggleBtn: { padding: '5px 8px', borderRadius: 6, border: '1.5px solid', fontSize: 11, fontWeight: 600, textAlign: 'left', cursor: 'pointer', transition: 'all 0.15s' },
+  toggleBtn: { padding: '5px 8px', borderRadius: 6, border: '1.5px solid', fontSize: 11, fontWeight: 600, textAlign: 'left', cursor: 'pointer' },
 }

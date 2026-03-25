@@ -1,38 +1,41 @@
-import { useState } from 'react'
-import { getUsers, saveUsers, getSchedule, saveSchedule } from '../store'
+import { useState, useEffect } from 'react'
+import { api } from '../api'
 
-const EMPTY_FORM = { name: '', username: '', password: '' }
+const EMPTY = { name: '', username: '', password: '' }
 
 export default function Users() {
-  const [users, setUsers] = useState(getUsers())
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [users, setUsers] = useState([])
+  const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e) {
+  useEffect(() => { api.getUsers().then(setUsers) }, [])
+
+  async function handleSubmit(e) {
     e.preventDefault()
     if (!form.name || !form.username) { setError('Vui lòng điền đầy đủ'); return }
     if (!editId && !form.password) { setError('Vui lòng nhập mật khẩu'); return }
-    if (users.find(u => u.username === form.username && u.id !== editId)) {
-      setError('Tên đăng nhập đã tồn tại'); return
-    }
+    setLoading(true); setError('')
+    try {
+      if (editId) {
+        const updated = await api.updateUser(editId, form)
+        setUsers(prev => prev.map(u => u.id === editId ? updated : u))
+      } else {
+        const newUser = await api.addUser(form)
+        setUsers(prev => [...prev, newUser])
+      }
+      setForm(EMPTY); setShowForm(false); setEditId(null)
+    } catch (err) { setError(err.message) }
+    finally { setLoading(false) }
+  }
 
-    let updated
-    if (editId) {
-      updated = users.map(u => u.id === editId ? {
-        ...u,
-        name: form.name,
-        username: form.username,
-        ...(form.password ? { password: form.password } : {}),
-      } : u)
-    } else {
-      updated = [...users, { id: Date.now(), ...form, role: 'user' }]
-    }
-
-    saveUsers(updated); setUsers(updated)
-    setForm(EMPTY_FORM); setError(''); setShowForm(false); setEditId(null)
+  async function handleDelete(id) {
+    await api.deleteUser(id)
+    setUsers(prev => prev.filter(u => u.id !== id))
+    setDeleteId(null)
   }
 
   function handleEdit(u) {
@@ -40,34 +43,13 @@ export default function Users() {
     setEditId(u.id); setShowForm(true); setError('')
   }
 
-  function handleDelete(id) {
-    const updated = users.filter(u => u.id !== id)
-    saveUsers(updated)
-    setUsers(updated)
-
-    // Dọn user khỏi schedule
-    const schedule = getSchedule()
-    const cleaned = {}
-    for (const [date, shifts] of Object.entries(schedule)) {
-      cleaned[date] = {}
-      for (const [shiftId, assignedIds] of Object.entries(shifts)) {
-        const filtered = assignedIds.filter(uid => uid !== id)
-        cleaned[date][shiftId] = filtered
-      }
-    }
-    saveSchedule(cleaned)
-    setDeleteId(null)
-  }
-
-  function cancelForm() {
-    setForm(EMPTY_FORM); setError(''); setShowForm(false); setEditId(null)
-  }
+  function cancelForm() { setForm(EMPTY); setError(''); setShowForm(false); setEditId(null) }
 
   return (
     <div style={s.wrap}>
       <div style={s.topBar}>
         <h2 style={s.title}>Quản lý Nhân Viên</h2>
-        <button style={s.addBtn} onClick={() => { if (showForm && !editId) { cancelForm() } else { cancelForm(); setShowForm(true) } }}>
+        <button style={s.addBtn} onClick={() => { if (showForm && !editId) cancelForm(); else { cancelForm(); setShowForm(true) } }}>
           {showForm && !editId ? '✕ Đóng' : '+ Thêm nhân viên'}
         </button>
       </div>
@@ -91,7 +73,7 @@ export default function Users() {
           </div>
           {error && <p style={s.error}>{error}</p>}
           <div style={{ display: 'flex', gap: 10 }}>
-            <button style={s.submitBtn} type="submit">{editId ? 'Lưu thay đổi' : 'Thêm nhân viên'}</button>
+            <button style={s.submitBtn} type="submit" disabled={loading}>{loading ? 'Đang lưu...' : editId ? 'Lưu thay đổi' : 'Thêm nhân viên'}</button>
             <button style={s.cancelBtn} type="button" onClick={cancelForm}>Hủy</button>
           </div>
         </form>
@@ -115,9 +97,7 @@ export default function Users() {
             </span>
             <span style={{ flex: 1.5, display: 'flex', gap: 8 }}>
               <button style={s.editBtn} onClick={() => handleEdit(u)}>✏️ Sửa</button>
-              {u.role !== 'admin' && (
-                <button style={s.deleteBtn} onClick={() => setDeleteId(u.id)}>🗑️ Xóa</button>
-              )}
+              {u.role !== 'admin' && <button style={s.deleteBtn} onClick={() => setDeleteId(u.id)}>🗑️ Xóa</button>}
             </span>
           </div>
         ))}
@@ -128,7 +108,7 @@ export default function Users() {
           <div style={s.confirmBox} onClick={e => e.stopPropagation()}>
             <p style={{ marginBottom: 8, fontSize: 16, fontWeight: 600 }}>Xác nhận xóa nhân viên?</p>
             <p style={{ marginBottom: 20, fontSize: 13, color: '#718096' }}>
-              <strong>{users.find(u => u.id === deleteId)?.name}</strong> sẽ bị xóa khỏi tất cả ca trực đã phân công.
+              <strong>{users.find(u => u.id === deleteId)?.name}</strong> sẽ bị xóa khỏi tất cả ca trực.
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button style={s.cancelBtnModal} onClick={() => setDeleteId(null)}>Hủy</button>

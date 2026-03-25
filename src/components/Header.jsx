@@ -1,25 +1,29 @@
 import { useState, useEffect } from 'react'
-import { logout, getMessages, getLastRead } from '../store'
+import { logoutUser, api } from '../api'
 
 function useUnread(user) {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    function calc() {
-      const msgs = getMessages()
-      const lastRead = getLastRead()
-      if (user.role === 'admin') {
-        return msgs.filter(m => {
-          if (m.toId !== 'admin') return false
-          const lastId = lastRead[`admin_${m.fromId}`] || 0
-          return m.id > lastId
-        }).length
-      } else {
-        const lastId = lastRead[`user_${user.id}`] || 0
-        return msgs.filter(m => m.fromId === 'admin' && m.toId === user.id && m.id > lastId).length
-      }
+    async function calc() {
+      try {
+        if (user.role === 'admin') {
+          const users = await api.getUsers()
+          let total = 0
+          for (const u of users.filter(x => x.role === 'user')) {
+            const msgs = await api.getMessages(u.id)
+            const lastSeen = sessionStorage.getItem(`lastSeen_admin_${u.id}`) || ''
+            total += msgs.filter(m => m.fromId === u.id && m.id > lastSeen).length
+          }
+          setCount(total)
+        } else {
+          const msgs = await api.getMessages(String(user.id))
+          const lastSeen = sessionStorage.getItem(`lastSeen_user_${user.id}`) || ''
+          setCount(msgs.filter(m => m.fromId === 'admin' && m.id > lastSeen).length)
+        }
+      } catch {}
     }
-    setCount(calc())
-    const t = setInterval(() => setCount(calc()), 1000)
+    calc()
+    const t = setInterval(calc, 5000)
     return () => clearInterval(t)
   }, [user])
   return count
@@ -54,7 +58,7 @@ export default function Header({ user, tab, setTab, onLogout }) {
 
         <div style={s.right}>
           <span className="desktop-user" style={s.userInfo}>{user.role === 'admin' ? '🔑' : '👤'} {user.name}</span>
-          <button className="desktop-logout" style={s.logoutBtn} onClick={() => { logout(); onLogout() }}>Đăng xuất</button>
+          <button className="desktop-logout" style={s.logoutBtn} onClick={() => { logoutUser(); onLogout() }}>Đăng xuất</button>
           <button className="hamburger-btn" style={{ ...s.hamburger, display: 'flex' }} onClick={() => setMenuOpen(!menuOpen)}>
             {menuOpen ? '✕' : '☰'}
             {!menuOpen && unread > 0 && <span style={s.hamburgerDot} />}
@@ -71,7 +75,7 @@ export default function Header({ user, tab, setTab, onLogout }) {
               {t.id === 'messages' && unread > 0 && <span style={s.badge}>{unread > 99 ? '99+' : unread}</span>}
             </button>
           ))}
-          <button style={s.mobileLogout} onClick={() => { logout(); onLogout() }}>🚪 Đăng xuất</button>
+          <button style={s.mobileLogout} onClick={() => { logoutUser(); onLogout() }}>🚪 Đăng xuất</button>
         </div>
       )}
     </div>

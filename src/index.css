@@ -1,20 +1,104 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; color: #1a202c; }
 button { cursor: pointer; }
-input, select, textarea { outline: none; }
+input, select, textarea { outline: none; font-family: inherit; }
 
-/* Responsive header */
+/* ===== HEADER RESPONSIVE ===== */
 @media (max-width: 640px) {
-  .desktop-nav, .desktop-user, .desktop-logout { display: none !important; }
+  .desktop-nav,
+  .desktop-user,
+  .desktop-logout { display: none !important; }
 }
 @media (min-width: 641px) {
   .hamburger-btn { display: none !important; }
   .mobile-menu { display: none !important; }
 }
 
-/* Responsive schedule grid */
+/* ===== SCHEDULE GRID ===== */
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
 @media (max-width: 480px) {
-  .schedule-grid {
-    grid-template-columns: 1fr !important;
+  .schedule-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== USER STICKY BAR ===== */
+.user-sticky-bar {
+  position: sticky;
+  top: 56px;
+  z-index: 40;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* ===== MESSAGES RESPONSIVE ===== */
+@media (max-width: 600px) {
+  .messages-layout {
+    flex-direction: column !important;
   }
+  .messages-sidebar {
+    width: 100% !important;
+    max-height: 180px;
+    border-right: none !important;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .messages-wrap {
+    padding: 8px !important;
+    height: calc(100vh - 56px) !important;
+  }
+}
+
+/* ===== SCHEDULE WRAP ===== */
+@media (max-width: 480px) {
+  .schedule-wrap { padding: 8px !important; }
+  .month-nav { gap: 8px !important; flex-wrap: wrap; justify-content: center; }
+  .month-nav h2 { font-size: 16px !important; min-width: unset !important; }
+  .legend { gap: 4px !important; }
+}
+
+/* ===== USERS TABLE RESPONSIVE ===== */
+@media (max-width: 600px) {
+  .users-table-head { display: none !important; }
+  .users-table-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+    padding: 12px 16px !important;
+  }
+  .users-table-row span { flex: unset !important; }
+}
+
+/* ===== SHIFT MANAGER RESPONSIVE ===== */
+@media (max-width: 600px) {
+  .shift-day-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .shift-form-row { flex-direction: column !important; }
+}
+
+/* ===== LOGIN RESPONSIVE ===== */
+@media (max-width: 420px) {
+  .login-card {
+    padding: 28px 20px 20px !important;
+    width: 100% !important;
+    margin: 16px;
+    border-radius: 12px !important;
+  }
+}
+
+/* ===== EXPORT MODAL ===== */
+@media (max-width: 480px) {
+  .export-modal { padding: 20px 16px !important; }
+}
+
+/* ===== MY SCHEDULE MODAL ===== */
+@media (max-width: 480px) {
+  .my-schedule-modal { padding: 20px 16px !important; }
 }

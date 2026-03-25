@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMessages, saveMessages, getUsers, getLastRead, setLastRead } from '../store'
+import { api } from '../api'
+
+// Lưu id tin nhắn cuối đã xem theo key
+function getLastSeen(key) { return sessionStorage.getItem(`lastSeen_${key}`) || '' }
+function setLastSeen(key, id) { sessionStorage.setItem(`lastSeen_${key}`, id) }
 
 function ChatBox({ thread, text, setText, onSend, isAdmin, users }) {
   const bottomRef = useRef(null)
@@ -38,73 +42,94 @@ function ChatBox({ thread, text, setText, onSend, isAdmin, users }) {
 
 export default function Messages({ user }) {
   const isAdmin = user.role === 'admin'
-  const [messages, setMessages] = useState(getMessages())
+  const [users, setUsers] = useState([])
+  const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [selectedUserId, setSelectedUserId] = useState(null)
+  const [unread, setUnread] = useState({}) // { userId: count }
 
-  const users = getUsers().filter(u => u.role === 'user')
-  const threadUserId = isAdmin ? selectedUserId : user.id
-  const thread = messages.filter(m =>
-    (m.fromId === threadUserId && m.toId === 'admin') ||
-    (m.fromId === 'admin' && m.toId === threadUserId)
-  )
-
-  // Polling tin nhắn mới
   useEffect(() => {
-    const t = setInterval(() => setMessages(getMessages()), 1000)
-    return () => clearInterval(t)
+    if (isAdmin) api.getUsers().then(u => setUsers(u.filter(x => x.role === 'user')))
   }, [])
 
-  // User: đánh dấu đã đọc khi mở trang hoặc có tin mới
+  // Load + polling thread đang mở
   useEffect(() => {
-    if (isAdmin) return
-    const msgs = messages.filter(m => m.fromId === 'admin' && m.toId === user.id)
-    if (!msgs.length) return
-    setLastRead(`user_${user.id}`, msgs[msgs.length - 1].id)
-  }, [messages.length])
+    const uid = isAdmin ? selectedUserId : String(user.id)
+    if (!uid) return
+    let active = true
 
-  // Admin: đánh dấu đã đọc thread đang mở
+    async function load() {
+      const msgs = await api.getMessages(uid)
+      if (!active) return
+      setMessages(msgs)
+      // Đánh dấu đã đọc thread này
+      if (msgs.length > 0) {
+        const lastId = msgs[msgs.length - 1].id
+        const key = isAdmin ? `admin_${uid}` : `user_${uid}`
+        setLastSeen(key, lastId)
+        if (isAdmin) setUnread(prev => ({ ...prev, [uid]: 0 }))
+      }
+    }
+
+    load()
+    const t = setInterval(load, 2000)
+    return () => { active = false; clearInterval(t) }
+  }, [selectedUserId])
+
+  // Admin: polling unread cho tất cả user (chỉ khi đã có danh sách user)
   useEffect(() => {
-    if (!isAdmin || !selectedUserId) return
-    const msgs = messages.filter(m => m.fromId === selectedUserId && m.toId === 'admin')
-    if (!msgs.length) return
-    setLastRead(`admin_${selectedUserId}`, msgs[msgs.length - 1].id)
-  }, [selectedUserId, messages.length])
+    if (!isAdmin || users.length === 0) return
+    let active = true
 
-  // Đếm tin chưa đọc từ 1 user cụ thể (cho sidebar admin)
-  function unreadFrom(userId) {
-    const lastId = getLastRead()[`admin_${userId}`] || 0
-    return messages.filter(m => m.fromId === userId && m.toId === 'admin' && m.id > lastId).length
+    async function checkAll() {
+      const counts = {}
+      for (const u of users) {
+        // Chỉ check nếu không đang xem thread này
+        if (selectedUserId === u.id) { counts[u.id] = 0; continue }
+        try {
+          const msgs = await api.getMessages(u.id)
+          const lastSeen = getLastSeen(`admin_${u.id}`)
+          // Đếm tin từ user gửi admin mà chưa đọc
+          counts[u.id] = msgs.filter(m => m.fromId === u.id && m.id > lastSeen).length
+        } catch { counts[u.id] = 0 }
+      }
+      if (active) setUnread(counts)
+    }
+
+    checkAll()
+    const t = setInterval(checkAll, 3000)
+    return () => { active = false; clearInterval(t) }
+  }, [users, selectedUserId])
+
+  async function send() {
+    if (!text.trim()) return
+    if (isAdmin && !selectedUserId) return
+    const msg = await api.sendMessage({
+      fromId: isAdmin ? 'admin' : String(user.id),
+      fromName: user.name,
+      toId: isAdmin ? selectedUserId : 'admin',
+      text: text.trim(),
+    })
+    setMessages(prev => [...prev, msg])
+    setText('')
   }
 
   function selectUser(uid) {
     setSelectedUserId(uid)
     setText('')
-  }
-
-  function send() {
-    if (!text.trim() || (isAdmin && !selectedUserId)) return
-    const msg = {
-      id: Date.now(),
-      fromId: isAdmin ? 'admin' : user.id,
-      fromName: user.name,
-      toId: isAdmin ? selectedUserId : 'admin',
-      text: text.trim(),
-      time: new Date().toISOString(),
-    }
-    const updated = [...messages, msg]
-    saveMessages(updated); setMessages(updated); setText('')
+    setMessages([])
+    // Reset badge ngay khi click
+    setUnread(prev => ({ ...prev, [uid]: 0 }))
   }
 
   return (
-    <div style={s.wrap}>
+    <div style={s.wrap} className="messages-wrap">
       {isAdmin ? (
-        <div style={s.layout}>
-          {/* Sidebar danh sách user */}
-          <div style={s.sidebar}>
+        <div style={s.layout} className="messages-layout">
+          <div style={s.sidebar} className="messages-sidebar">
             <div style={s.sidebarTitle}>💬 Hội thoại</div>
             {users.map(u => {
-              const cnt = unreadFrom(u.id)
+              const cnt = unread[u.id] || 0
               return (
                 <div key={u.id}
                   style={{ ...s.userItem, ...(selectedUserId === u.id ? s.userItemActive : {}) }}
@@ -112,14 +137,14 @@ export default function Messages({ user }) {
                 >
                   <div style={s.avatarWrap}>
                     <div style={s.avatar}>{u.name[0]}</div>
-                    {cnt > 0 && <span style={s.dot}>{cnt}</span>}
+                    {cnt > 0 && <span style={s.dot}>{cnt > 99 ? '99+' : cnt}</span>}
                   </div>
                   <div style={s.userMeta}>
                     <div style={s.userName}>{u.name}</div>
                     <div style={s.userSub}>
                       {cnt > 0
                         ? <span style={s.unreadLabel}>{cnt} tin chưa đọc</span>
-                        : `${messages.filter(m => m.fromId === u.id).length} tin nhắn`
+                        : <span>{u.username}</span>
                       }
                     </div>
                   </div>
@@ -127,16 +152,12 @@ export default function Messages({ user }) {
               )
             })}
           </div>
-
-          {/* Khung chat */}
           <div style={s.chatArea}>
             {!selectedUserId
               ? <div style={s.placeholder}>← Chọn nhân viên để xem hội thoại</div>
               : <>
-                  <div style={s.chatHeader}>
-                    💬 {users.find(u => u.id === selectedUserId)?.name}
-                  </div>
-                  <ChatBox thread={thread} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} />
+                  <div style={s.chatHeader}>💬 {users.find(u => u.id === selectedUserId)?.name}</div>
+                  <ChatBox thread={messages} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} />
                 </>
             }
           </div>
@@ -144,7 +165,7 @@ export default function Messages({ user }) {
       ) : (
         <div style={s.userChat}>
           <div style={s.chatHeader}>💬 Nhắn tin với Admin</div>
-          <ChatBox thread={thread} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} />
+          <ChatBox thread={messages} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} />
         </div>
       )}
     </div>
