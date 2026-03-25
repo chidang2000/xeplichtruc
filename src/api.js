@@ -1,4 +1,4 @@
-const BASE = 'https://xeplichtruc.onrender.com'
+const BASE = 'http://localhost:8000/api'
 
 async function req(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
