@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
-import ExportExcel from './ExportExcel'
+import ExportImage from './ExportImage'
 import UserBar from './UserBar'
 
 const DAY_NAMES = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7']
@@ -96,7 +96,7 @@ export default function Schedule({ user }) {
           <button style={s.navBtn} onClick={prevMonth}>‹</button>
           <h2 style={s.monthTitle}>{MONTHS[month]} {year}</h2>
           <button style={s.navBtn} onClick={nextMonth}>›</button>
-          <ExportExcel year={year} month={month} />
+          <ExportImage year={year} month={month} />
         </div>
 
         {/* Chú thích ca */}
