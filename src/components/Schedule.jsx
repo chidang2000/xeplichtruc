@@ -69,12 +69,16 @@ export default function Schedule({ user }) {
   function getAssigned(date, shiftId) { return schedule[dateKey(date)]?.[shiftId] || [] }
   function getUserName(id) { return users.find(u => u.id === id)?.name || null }
 
-  async function toggleUser(userId) {
+  function toggleUser(userId) {
     const key = dateKey(modal.date)
     const cur = getAssigned(modal.date, modal.shiftId)
     const updated = cur.includes(userId) ? cur.filter(id => id !== userId) : [...cur, userId]
-    await api.updateSchedule(key, modal.shiftId, updated)
+    // Update UI ngay, gọi API ngầm sau
     setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [modal.shiftId]: updated } }))
+    api.updateSchedule(key, modal.shiftId, updated).catch(() => {
+      // Rollback nếu lỗi
+      setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [modal.shiftId]: cur } }))
+    })
   }
 
   function prevMonth() { month === 0 ? (setYear(y => y-1), setMonth(11)) : setMonth(m => m-1) }

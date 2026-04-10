@@ -5,6 +5,19 @@ const router = express.Router()
 
 // ⚠️ Routes cụ thể phải đặt TRƯỚC route động /:userId
 
+// Lấy danh sách userId đã từng nhắn tin với admin
+router.get('/conversations/admin', async (req, res) => {
+  const msgs = await Message.find({
+    $or: [{ toId: 'admin' }, { fromId: 'admin' }]
+  }).distinct('fromId')
+  // Gộp cả fromId và toId, loại 'admin'
+  const msgs2 = await Message.find({
+    $or: [{ toId: 'admin' }, { fromId: 'admin' }]
+  }).distinct('toId')
+  const ids = [...new Set([...msgs, ...msgs2])].filter(id => id !== 'admin')
+  res.json(ids)
+})
+
 // Đếm tin chưa đọc cho admin (tất cả user)
 router.get('/unread/admin', async (req, res) => {
   const msgs = await Message.find({ toId: 'admin' })

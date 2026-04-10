@@ -9,13 +9,15 @@ import ShiftManager from './components/ShiftManager'
 
 export default function App() {
   const [user, setUser] = useState(getCurrentUser())
-  const [tab, setTab] = useState('schedule')
+  const [tab, setTab] = useState(() => sessionStorage.getItem('tab') || 'schedule')
 
-  if (!user) return <Login onLogin={u => { setUser(u); setTab('schedule') }} />
+  function changeTab(t) { setTab(t); sessionStorage.setItem('tab', t) }
+
+  if (!user) return <Login onLogin={u => { setUser(u); changeTab('schedule') }} />
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
-      <Header user={user} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
+      <Header user={user} tab={tab} setTab={changeTab} onLogout={() => { setUser(null); sessionStorage.removeItem('tab') }} />
       <main>
         {tab === 'schedule' && <Schedule user={user} />}
         {tab === 'shifts' && user.role === 'admin' && <ShiftManager />}

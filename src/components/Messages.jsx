@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 
-function ChatBox({ thread, text, setText, onSend, isAdmin, users }) {
+function ChatBox({ thread, text, setText, onSend, isAdmin, users, inputRef }) {
   const bottomRef = useRef(null)
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [thread.length])
   function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() } }
@@ -28,7 +28,7 @@ function ChatBox({ thread, text, setText, onSend, isAdmin, users }) {
         <div ref={bottomRef} />
       </div>
       <div style={s.inputRow}>
-        <textarea style={s.textarea} placeholder="Nhập tin nhắn... (Enter để gửi)" value={text}
+        <textarea ref={inputRef} style={s.textarea} placeholder="Nhập tin nhắn... (Enter để gửi)" value={text}
           onChange={e => setText(e.target.value)} onKeyDown={handleKey} rows={2} />
         <button style={s.sendBtn} onClick={onSend}>Gửi</button>
       </div>
@@ -39,13 +39,20 @@ function ChatBox({ thread, text, setText, onSend, isAdmin, users }) {
 export default function Messages({ user }) {
   const isAdmin = user.role === 'admin'
   const [users, setUsers] = useState([])
+  const [conversationIds, setConversationIds] = useState(null) // null = chưa load
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [selectedUserId, setSelectedUserId] = useState(null)
-  const [unread, setUnread] = useState({}) // admin: {userId: count}, user: number
+  const [unread, setUnread] = useState({})
+  const inputRef = useRef(null)
 
   useEffect(() => {
-    if (isAdmin) api.getUsers().then(u => setUsers(u.filter(x => x.role === 'user')))
+    if (isAdmin) {
+      Promise.all([api.getUsers(), api.getConversations()]).then(([u, ids]) => {
+        setUsers(u.filter(x => x.role === 'user'))
+        setConversationIds(ids)
+      })
+    }
   }, [])
 
   // Load + polling thread đang mở
@@ -122,9 +129,27 @@ export default function Messages({ user }) {
     })
     setMessages(prev => [...prev, msg])
     setText('')
+    // Thêm vào danh sách conversation nếu chưa có
+    if (isAdmin && selectedUserId) {
+      setConversationIds(prev => prev && !prev.includes(String(selectedUserId)) ? [...prev, String(selectedUserId)] : prev)
+    }
   }
 
-  function selectUser(uid) { setSelectedUserId(uid); setText(''); setMessages([]) }
+  const [sidebarSearch, setSidebarSearch] = useState('')
+
+  function selectUser(uid) {
+    setSelectedUserId(uid); setText(''); setMessages([]); setSidebarSearch('')
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  // Nếu đang search thì tìm trong tất cả user, không thì chỉ hiện người đã chat
+  const baseUsers = sidebarSearch
+    ? users
+    : users.filter(u => conversationIds?.includes(String(u.id)))
+
+  const filteredUsers = baseUsers
+    .filter(u => u.name.toLowerCase().includes(sidebarSearch.toLowerCase()) || u.username.toLowerCase().includes(sidebarSearch.toLowerCase()))
+    .sort((a, b) => (unread[b.id] || 0) - (unread[a.id] || 0))
 
   return (
     <div style={s.wrap} className="messages-wrap">
@@ -132,11 +157,25 @@ export default function Messages({ user }) {
         <div style={s.layout} className="messages-layout">
           <div style={s.sidebar} className="messages-sidebar">
             <div style={s.sidebarTitle}>💬 Hội thoại</div>
-            {users.map(u => {
+            <div style={s.sidebarSearch}>
+              <span style={s.searchIcon}>🔍</span>
+              <input
+                style={s.sidebarSearchInput}
+                placeholder="Tìm nhân viên..."
+                value={sidebarSearch}
+                onChange={e => setSidebarSearch(e.target.value)}
+              />
+              {sidebarSearch && <button style={s.clearBtn} onClick={() => setSidebarSearch('')}>✕</button>}
+            </div>
+            {!sidebarSearch && conversationIds !== null && baseUsers.length === 0 && (
+              <div style={s.noResult}>Chưa có hội thoại nào</div>
+            )}
+            {filteredUsers.length === 0 && <div style={s.noResult}>Không tìm thấy</div>}
+            {filteredUsers.map(u => {
               const cnt = unread[u.id] || 0
               return (
                 <div key={u.id}
-                  style={{ ...s.userItem, ...(selectedUserId === u.id ? s.userItemActive : {}) }}
+                  style={{ ...s.userItem, ...(selectedUserId === u.id ? s.userItemActive : {}), ...(cnt > 0 ? s.userItemUnread : {}) }}
                   onClick={() => selectUser(u.id)}
                 >
                   <div style={s.avatarWrap}>
@@ -144,7 +183,7 @@ export default function Messages({ user }) {
                     {cnt > 0 && <span style={s.dot}>{cnt > 99 ? '99+' : cnt}</span>}
                   </div>
                   <div style={s.userMeta}>
-                    <div style={s.userName}>{u.name}</div>
+                    <div style={{ ...s.userName, ...(cnt > 0 ? { color: '#2b6cb0', fontWeight: 700 } : {}) }}>{u.name}</div>
                     <div style={s.userSub}>
                       {cnt > 0 ? <span style={s.unreadLabel}>{cnt} tin chưa đọc</span> : u.username}
                     </div>
@@ -158,7 +197,7 @@ export default function Messages({ user }) {
               ? <div style={s.placeholder}>← Chọn nhân viên để xem hội thoại</div>
               : <>
                   <div style={s.chatHeader}>💬 {users.find(u => u.id === selectedUserId)?.name}</div>
-                  <ChatBox thread={messages} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} />
+                  <ChatBox thread={messages} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} inputRef={inputRef} />
                 </>
             }
           </div>
@@ -166,7 +205,7 @@ export default function Messages({ user }) {
       ) : (
         <div style={s.userChat}>
           <div style={s.chatHeader}>💬 Nhắn tin với Admin</div>
-          <ChatBox thread={messages} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} />
+          <ChatBox thread={messages} text={text} setText={setText} onSend={send} isAdmin={isAdmin} users={users} inputRef={inputRef} />
         </div>
       )}
     </div>
@@ -178,8 +217,14 @@ const s = {
   layout: { display: 'flex', flex: 1, background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', minHeight: 0 },
   sidebar: { width: 250, borderRight: '1px solid #e2e8f0', overflowY: 'auto', flexShrink: 0 },
   sidebarTitle: { padding: '16px 16px 12px', fontWeight: 700, fontSize: 15, color: '#2d3748', borderBottom: '1px solid #e2e8f0' },
+  sidebarSearch: { display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #e2e8f0', gap: 6 },
+  searchIcon: { fontSize: 13, opacity: 0.5, flexShrink: 0 },
+  sidebarSearchInput: { flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: '#2d3748', outline: 'none', minWidth: 0 },
+  clearBtn: { background: 'none', border: 'none', color: '#a0aec0', fontSize: 12, padding: 0, cursor: 'pointer', flexShrink: 0 },
+  noResult: { padding: '16px', textAlign: 'center', color: '#a0aec0', fontSize: 13 },
   userItem: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f4f8' },
   userItemActive: { background: '#ebf4ff' },
+  userItemUnread: { background: '#fff5f5' },
   avatarWrap: { position: 'relative', flexShrink: 0 },
   avatar: { width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 },
   dot: { position: 'absolute', top: -3, right: -3, background: '#e53e3e', color: '#fff', fontSize: 10, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', border: '2px solid #fff' },
