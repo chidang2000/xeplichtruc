@@ -19,7 +19,15 @@ export default function UserBar({ user, year, month, days, schedule, dayShifts, 
 
   function getMySchedule() {
     const result = []
+    // Tính ngày đầu tuần hiện tại (thứ 2)
+    const startOfWeek = new Date(today)
+    const day = today.getDay()
+    const diff = day === 0 ? -6 : 1 - day // về thứ 2
+    startOfWeek.setDate(today.getDate() + diff)
+    startOfWeek.setHours(0, 0, 0, 0)
+
     for (const day of days) {
+      if (day < startOfWeek) continue // bỏ qua tuần đã qua
       const key = dateKey(day)
       const activeShifts = getActiveShifts(day)
       for (const sh of activeShifts) {
@@ -99,7 +107,7 @@ export default function UserBar({ user, year, month, days, schedule, dayShifts, 
               </div>
             )}
 
-            <div style={s.summary}>Tổng: {myList.length} ca trong tháng</div>
+            <div style={s.summary}>Tổng: {myList.length} ca từ tuần này</div>
             <button style={s.closeBtn} onClick={() => setOpen(false)}>Đóng</button>
           </div>
         </div>

@@ -145,7 +145,7 @@ export default function Messages({ user }) {
   // Nếu đang search thì tìm trong tất cả user, không thì chỉ hiện người đã chat
   const baseUsers = sidebarSearch
     ? users
-    : users.filter(u => conversationIds?.includes(String(u.id)))
+    : users.filter(u => conversationIds?.includes(String(u.id)) || conversationIds?.includes(u.id))
 
   const filteredUsers = baseUsers
     .filter(u => u.name.toLowerCase().includes(sidebarSearch.toLowerCase()) || u.username.toLowerCase().includes(sidebarSearch.toLowerCase()))
